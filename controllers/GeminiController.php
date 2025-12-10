@@ -3,15 +3,15 @@
 class GeminiController
 {
     private $apiKey;
-    private $apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+    private $apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
 
     public function __construct()
     {
         // Load API key from .env file
-        $this->apiKey = $this->loadEnv('GEMINI_API_KEY');
+        $this->apiKey = $this->loadEnv('OPENROUTER_API_KEY');
 
         if (empty($this->apiKey)) {
-            error_log('GEMINI_API_KEY not configured in .env file');
+            error_log('OPENROUTER_API_KEY not configured in .env file');
         }
     }
 
@@ -320,55 +320,49 @@ class GeminiController
     }
 
     /**
-     * Call Gemini API with retry logic
+     * Call OpenRouter API (Gemini via OpenRouter)
      */
     private function callGeminiAPI($contents)
     {
-        $url = $this->apiUrl . '?key=' . $this->apiKey;
+        error_log('=== OPENROUTER API CALL ===');
+        error_log('API Key present: ' . (!empty($this->apiKey) ? 'Yes' : 'No'));
+        error_log('API Key length: ' . strlen($this->apiKey ?? ''));
+
+        $url = $this->apiUrl;
+        error_log('API URL: ' . $url);
+
+        // Convert contents format to OpenRouter messages format
+        $messages = $this->convertContentsToMessages($contents);
 
         $data = [
-            'contents' => $contents,
-            'generationConfig' => [
-                'temperature' => 0.7,
-                'topK' => 40,
-                'topP' => 0.95,
-                'maxOutputTokens' => 1024,
-            ],
-            'safetySettings' => [
-                [
-                    'category' => 'HARM_CATEGORY_HARASSMENT',
-                    'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
-                ],
-                [
-                    'category' => 'HARM_CATEGORY_HATE_SPEECH',
-                    'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
-                ],
-                [
-                    'category' => 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-                    'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
-                ],
-                [
-                    'category' => 'HARM_CATEGORY_DANGEROUS_CONTENT',
-                    'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
-                ]
-            ]
+            'model' => 'google/gemini-2.0-flash-exp:free',
+            'messages' => $messages
         ];
+
+        error_log('Request data: ' . json_encode($data));
+        error_log('Number of messages: ' . count($messages));
 
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json'
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $this->apiKey
         ]);
 
+        error_log('Sending request to OpenRouter API...');
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
         curl_close($ch);
 
+        error_log('Response HTTP code: ' . $httpCode);
+        error_log('Response body: ' . $response);
+        error_log('cURL error: ' . ($curlError ?: 'None'));
+
         if ($curlError) {
-            error_log('Gemini API curl error: ' . $curlError);
+            error_log('ERROR: cURL error occurred');
             return [
                 'success' => false,
                 'error' => 'Network error: ' . $curlError
@@ -376,28 +370,70 @@ class GeminiController
         }
 
         $responseData = json_decode($response, true);
+        error_log('Decoded response data: ' . json_encode($responseData));
 
         if ($httpCode !== 200) {
             $errorMessage = $responseData['error']['message'] ?? 'Unknown error';
-            error_log('Gemini API error (HTTP ' . $httpCode . '): ' . $errorMessage);
+            $errorCode = $responseData['error']['code'] ?? 'N/A';
+
+            error_log('ERROR: HTTP ' . $httpCode);
+            error_log('Error message: ' . $errorMessage);
+            error_log('Error code: ' . $errorCode);
+            error_log('Full error response: ' . json_encode($responseData));
+
             return [
                 'success' => false,
-                'error' => 'API error: ' . $errorMessage
+                'error' => 'API error: ' . $errorMessage . ' (Code: ' . $errorCode . ')'
             ];
         }
 
-        if (!isset($responseData['candidates'][0]['content']['parts'][0]['text'])) {
-            error_log('Gemini API unexpected response format: ' . $response);
+        // OpenRouter returns response in OpenAI format
+        if (!isset($responseData['choices'][0]['message']['content'])) {
+            error_log('ERROR: Unexpected response format');
+            error_log('Response structure: ' . print_r($responseData, true));
             return [
                 'success' => false,
                 'error' => 'Unexpected response format'
             ];
         }
 
+        $text = $responseData['choices'][0]['message']['content'];
+        error_log('SUCCESS: Received response text length: ' . strlen($text));
+        error_log('=== END OPENROUTER API CALL ===');
+
         return [
             'success' => true,
-            'text' => $responseData['candidates'][0]['content']['parts'][0]['text']
+            'text' => $text
         ];
+    }
+
+    /**
+     * Convert Gemini contents format to OpenRouter messages format
+     */
+    private function convertContentsToMessages($contents)
+    {
+        $messages = [];
+
+        foreach ($contents as $index => $content) {
+            $text = $content['parts'][0]['text'] ?? '';
+
+            // First message is system prompt
+            if ($index === 0) {
+                $messages[] = [
+                    'role' => 'system',
+                    'content' => $text
+                ];
+            } else {
+                // Alternate between user and assistant
+                $role = ($index % 2 === 1) ? 'user' : 'assistant';
+                $messages[] = [
+                    'role' => $role,
+                    'content' => $text
+                ];
+            }
+        }
+
+        return $messages;
     }
 
     /**
