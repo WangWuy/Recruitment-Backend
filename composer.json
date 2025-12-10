@@ -1,0 +1,14 @@
+{
+    "name": "recruitment-app/backend-api",
+    "description": "Backend PHP API for Recruitment Application",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "phpmailer/phpmailer": "^6.9"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "/"
+        }
+    }
+}

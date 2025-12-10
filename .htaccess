@@ -1,0 +1,19 @@
+RewriteEngine On
+
+# Disable DirectorySlash to prevent trailing slash redirects
+DirectorySlash Off
+
+# Forward Authorization header to PHP (CRITICAL for JWT)
+RewriteCond %{HTTP:Authorization} ^(.*)
+RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
+
+# Force routing all requests to index.php while allowing direct access to existing files
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# Allow CORS preflight (commented out to avoid issues if mod_headers is not enabled)
+# Header always set Access-Control-Allow-Origin "*"
+# Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+# Header always set Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+
