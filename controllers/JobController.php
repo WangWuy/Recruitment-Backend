@@ -1,4 +1,3 @@
-R
 <?php
 
 class JobController
@@ -40,8 +39,10 @@ class JobController
             $params = [];
 
             if ($keyword) {
-                $whereConditions[] = "(j.title LIKE :keyword OR j.description LIKE :keyword OR c.name LIKE :keyword)";
-                $params['keyword'] = "%$keyword%";
+                $whereConditions[] = "(j.title LIKE :keyword1 OR j.description LIKE :keyword2 OR c.name LIKE :keyword3)";
+                $params['keyword1'] = "%$keyword%";
+                $params['keyword2'] = "%$keyword%";
+                $params['keyword3'] = "%$keyword%";
             }
 
             if ($categoryId) {
@@ -77,15 +78,23 @@ class JobController
             $whereClause = implode(' AND ', $whereConditions);
 
             // Get total count
-            $countSql = "SELECT COUNT(*) as total FROM jobs j 
-                        JOIN companies c ON j.company_id = c.id 
+            $countSql = "SELECT COUNT(*) as total FROM jobs j
+                        JOIN companies c ON j.company_id = c.id
+                        LEFT JOIN categories cat ON j.category_id = cat.id
                         WHERE $whereClause";
             $countStmt = $this->db->prepare($countSql);
             $countStmt->execute($params);
             $total = $countStmt->fetch()['total'];
 
             // Get jobs
-            $sql = "SELECT j.*, c.name as company_name, c.logo_url as company_logo,\n                       cat.name as category_name\n                FROM jobs j\n                JOIN companies c ON j.company_id = c.id\n                LEFT JOIN categories cat ON j.category_id = cat.id\n                WHERE $whereClause\n                ORDER BY j.featured DESC, j.created_at DESC\n                LIMIT :limit OFFSET :offset";
+            $sql = "SELECT j.*, c.name as company_name, c.logo_url as company_logo,
+                       cat.name as category_name
+                FROM jobs j
+                JOIN companies c ON j.company_id = c.id
+                LEFT JOIN categories cat ON j.category_id = cat.id
+                WHERE $whereClause
+                ORDER BY j.featured DESC, j.created_at DESC
+                LIMIT :limit OFFSET :offset";
             $stmt = $this->db->prepare($sql);
             // Bind parameters (excluding limit/offset)
             foreach ($params as $key => $value) {
